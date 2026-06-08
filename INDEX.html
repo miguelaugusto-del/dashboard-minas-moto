@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Findor - RevOps Analytics | Minas Motos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        findor: {
+                            bg: '#FAF9F4', text: '#111827', muted: '#6B7280',
+                            border: '#E5E7EB', accent: '#1A4BED',
+                            loss: '#D1D5DB', negotiation: '#4B5563'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #FAF9F4; color: #111827; --grid-size: 20px; --grid-color: #E5E7EB; background-image: linear-gradient(to right, var(--grid-color) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px); background-size: var(--grid-size) var(--grid-size); -webkit-font-smoothing: antialiased; }
+        .authority-card { background-color: #FAF9F4; border: 1px solid #E5E7EB; border-radius: 0.75rem; transition: all 0.2s ease-in-out; }
+        .authority-card:hover { border-color: #D1D5DB; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-6 md:p-8">
+
+    <header class="relative flex justify-between items-center mb-10 border-b border-findor-border pb-6">
+        <div><span class="text-4xl font-bold text-findor-text tracking-tighter">Findor</span></div>
+        <div class="absolute left-1/2 -translate-x-1/2 text-center">
+            <h1 class="text-xl font-semibold tracking-tight text-findor-text">RevOps & Sales Dashboard</h1>
+            <p class="text-sm text-findor-muted">Inteligência Operacional: Minas Motos</p>
+        </div>
+        <div class="flex items-center gap-3 bg-transparent text-sm">
+            <span id="loading-status" class="text-findor-accent animate-pulse text-xs font-bold mr-4">Sincronizando...</span>
+            <span class="text-findor-muted font-medium">Mês de Análise:</span>
+            <!-- O select agora está vazio, será preenchido dinamicamente pelo JS -->
+            <select id="month-filter" onchange="updateDashboardData()" class="font-semibold text-findor-text bg-white border border-[#E5E7EB] px-4 py-2 rounded-md shadow-sm focus:outline-none focus:border-findor-accent cursor-pointer">
+                <!-- Opções injetadas pelo JavaScript -->
+            </select>
+        </div>
+    </header>
+
+    <section class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+        <div class="authority-card p-5">
+            <h3 class="text-findor-muted text-sm font-medium">Volume de Atração (Marketing)</h3>
+            <p id="kpi-marketing" class="text-3xl font-bold text-findor-text mt-1">-</p>
+        </div>
+        <div class="authority-card p-5 border-findor-accent bg-[rgba(26,75,237,0.03)]">
+            <h3 class="text-findor-accent font-medium text-sm">Gerenciados pela SDR (Ana)</h3>
+            <p id="kpi-sdr" class="text-3xl font-bold text-findor-accent mt-1">-</p>
+        </div>
+        <div class="authority-card p-5">
+            <h3 class="text-findor-muted text-sm font-medium">Fechamentos (Vendedores)</h3>
+            <p id="kpi-closers" class="text-3xl font-bold text-findor-text mt-1">-</p>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="space-y-8">
+            <div class="authority-card p-6">
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold text-findor-text">Origem de Aquisição (Mídia)</h3>
+                    <p class="text-xs text-findor-muted">De onde os leads chegam.</p>
+                </div>
+                <div class="relative h-60 w-full"><canvas id="chartMidia"></canvas></div>
+            </div>
+            <div class="authority-card p-6">
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold text-findor-text">Engajamento por Campanha (Evento)</h3>
+                </div>
+                <div class="relative h-64 w-full"><canvas id="chartEvento"></canvas></div>
+            </div>
+            <div class="authority-card p-6">
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold text-findor-text">Demanda por Produto (Top 10)</h3>
+                </div>
+                <div class="relative h-64 w-full"><canvas id="chartProduto"></canvas></div>
+            </div>
+        </div>
+
+        <div class="space-y-8">
+            <div class="authority-card p-6">
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold text-findor-text">Status Global do Pipeline</h3>
+                    <p class="text-xs text-findor-muted">Volume total em cada estágio de conversão.</p>
+                </div>
+                <div class="relative h-60 w-full"><canvas id="chartStatus"></canvas></div>
+            </div>
+            <div class="authority-card p-6 border-l-4 border-l-findor-accent">
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold text-findor-text">Performance por Vendedor (Closers)</h3>
+                    <p class="text-xs text-findor-muted">Taxa de sucesso (Ganho) vs Fricção (Perdido e Negociação).</p>
+                </div>
+                <div class="relative h-64 w-full"><canvas id="chartVendedor"></canvas></div>
+            </div>
+            <div class="authority-card p-6">
+                <div class="mb-4">
+                    <h3 class="text-lg font-semibold text-findor-text">Diagnóstico de Insucesso (Top 10)</h3>
+                    <p class="text-xs text-findor-muted">Por que estamos perdendo vendas?</p>
+                </div>
+                <div class="relative h-64 w-full"><canvas id="chartInsucesso"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+        Chart.defaults.font.family = 'Inter';
+        Chart.defaults.color = '#6B7280';
+        
+        let charts = {}; 
+        let parsedData = []; 
+        
+        const SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS4KgAnD4Z1ickZIN_eB5JIk690UVmLEt_RJGfep76ZWf6XcSsmKhdYaHKXQ-o3IXeIIpASvyNZxyg2/pub?output=csv";
+
+        function fetchSheetData() {
+            const NO_CACHE_URL = SHEETS_CSV_URL + "&t=" + new Date().getTime();
+
+            Papa.parse(NO_CACHE_URL, {
+                download: true, 
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if(results.data && results.data.length > 0) {
+                        parsedData = results.data;
+                        
+                        // NOVO: Chama a função para construir o filtro de meses antes de renderizar
+                        popularFiltroDeMeses(parsedData);
+                        
+                        updateDashboardData();
+                    } else {
+                        throwErrorUI("Planilha vazia ou estruturada incorretamente.");
+                    }
+                },
+                error: function(error) {
+                    console.error("Erro detalhado do PapaParse:", error);
+                    throwErrorUI("Erro de acesso. Verifique se a planilha está pública.");
+                }
+            });
+        }
+
+        function throwErrorUI(mensagem) {
+            const status = document.getElementById('loading-status');
+            status.innerText = mensagem;
+            status.classList.remove('text-findor-accent', 'animate-pulse');
+            status.classList.add('text-red-600', 'bg-red-50', 'px-2', 'py-1', 'rounded');
+        }
+
+        // NOVO: Lê os cabeçalhos da primeira tabela para descobrir os meses disponíveis na planilha
+        function popularFiltroDeMeses(linhas) {
+            const selectElement = document.getElementById('month-filter');
+            selectElement.innerHTML = ''; // Limpa o select
+
+            // Adiciona a opção padrão sempre presente
+            let optionTotal = document.createElement("option");
+            optionTotal.value = "total geral";
+            optionTotal.text = "Total Geral";
+            selectElement.appendChild(optionTotal);
+
+            // Caça os meses na linha que começa com "Mídia"
+            for (let i = 0; i < linhas.length; i++) {
+                let row = linhas[i];
+                if (row[0] && String(row[0]).trim() === "Mídia") {
+                    // Ignora a primeira coluna ('Mídia')
+                    for(let j = 1; j < row.length; j++) {
+                        let cabecalho = String(row[j]).trim().toLowerCase();
+                        if (cabecalho && cabecalho !== "total geral" && cabecalho !== "nan" && cabecalho !== "") {
+                            // Extrai apenas o mês (antes da barra, ex: "junho" de "junho/2026")
+                            let mesPuro = cabecalho.split('/')[0];
+                            
+                            // Cria a opção no HTML capitalizando a primeira letra (ex: "Junho")
+                            let option = document.createElement("option");
+                            option.value = mesPuro;
+                            option.text = mesPuro.charAt(0).toUpperCase() + mesPuro.slice(1) + (cabecalho.includes('/') ? " " + cabecalho.split('/')[1] : "");
+                            selectElement.appendChild(option);
+                        }
+                    }
+                    break; // Achou os meses, pode parar de procurar.
+                }
+            }
+        }
+
+        // MOTOR DE EXTRAÇÃO REVOLUCIONADO
+        function processarDados(linhas, monthFilter) {
+            let currentSection = "";
+            let midia = {}, evento = {}, produto = {}, insucesso = {}, status = {}, vendedorStats = {};
+            let kpiTotalAtracao = 0; 
+            
+            let columnMap = {}; 
+            let headerMap = { neg: -1, ganho: -1, perd: -1 };
+
+            const getSeguro = (row, filter) => {
+                let mappedKey = Object.keys(columnMap).find(k => k.includes(filter.toLowerCase()));
+                let mappedIdx = columnMap[mappedKey];
+                
+                if (mappedIdx === undefined) mappedIdx = columnMap["total geral"]; 
+                if (mappedIdx !== undefined && row[mappedIdx]) {
+                    return parseInt(row[mappedIdx]) || 0;
+                }
+                return 0;
+            };
+
+            for (let i = 0; i < linhas.length; i++) {
+                let row = linhas[i];
+                
+                if (!row.some(cell => String(cell).trim() !== "")) continue;
+
+                let firstCol = String(row[0] || "").trim();
+
+                if (firstCol && (firstCol.includes("Distribuição por") || firstCol.includes("Distribuição Por"))) {
+                    currentSection = firstCol;
+                    columnMap = {}; 
+                    continue;
+                }
+
+                if (currentSection === "Distribuição por Mídia") {
+                    if (firstCol === "Mídia") {
+                        row.forEach((h, idx) => { if(h && String(h).trim() !== "") columnMap[String(h).toLowerCase().trim()] = idx; });
+                        continue;
+                    }
+                    if (firstCol.toLowerCase().includes("total geral")) {
+                        kpiTotalAtracao = getSeguro(row, monthFilter);
+                        continue;
+                    }
+                    let nomeLinha = firstCol === "" ? "Não Informado" : firstCol;
+                    if (nomeLinha !== "NaN" && nomeLinha !== "0") {
+                        let val = getSeguro(row, monthFilter);
+                        if(val > 0) midia[nomeLinha] = val;
+                    }
+                } 
+                else if (currentSection === "Distribuição por Evento") {
+                    if (firstCol === "Evento") {
+                        row.forEach((h, idx) => { if(h && String(h).trim() !== "") columnMap[String(h).toLowerCase().trim()] = idx; });
+                        continue;
+                    }
+                    if (firstCol.toLowerCase().includes("total geral")) continue;
+                    let nomeLinha = firstCol === "" ? "Não Informado" : firstCol;
+                    if (nomeLinha !== "NaN" && nomeLinha !== "0") {
+                        let val = getSeguro(row, monthFilter);
+                        if(val > 0) evento[nomeLinha] = val;
+                    }
+                }
+                else if (currentSection === "Distribuição por Produto de Interesse") {
+                    if (firstCol === "Produto de Interesse") {
+                        row.forEach((h, idx) => { if(h && String(h).trim() !== "") columnMap[String(h).toLowerCase().trim()] = idx; });
+                        continue;
+                    }
+                    if (firstCol.toLowerCase().includes("total geral")) continue;
+                    let nomeLinha = firstCol === "" ? "Não Informado" : firstCol;
+                    if (nomeLinha !== "NaN" && nomeLinha !== "0" && !nomeLinha.includes("! Não Informado !")) {
+                        let val = getSeguro(row, monthFilter);
+                        if (val > 0) produto[nomeLinha] = val;
+                    }
+                }
+                else if (currentSection === "Distribuição Por motivo de Insucesso") {
+                    if (firstCol === "Motivos Insucesso") {
+                        row.forEach((h, idx) => { if(h && String(h).trim() !== "") columnMap[String(h).toLowerCase().trim()] = idx; });
+                        continue;
+                    }
+                    if (firstCol.toLowerCase().includes("total geral")) continue;
+                    let nomeLinha = firstCol === "" ? "Não Informado" : firstCol;
+                    if (nomeLinha !== "NaN" && nomeLinha !== "0") {
+                        let val = getSeguro(row, monthFilter);
+                        let nomeLimpo = nomeLinha.replace(/^[0-9]+-\s*[A-Z]*\s*-\s*/, ''); 
+                        if (val > 0) insucesso[nomeLimpo.substring(0, 25)] = val;
+                    }
+                }
+                else if (currentSection === "Distribuição por Status") {
+                    if (firstCol === "Status Correto") {
+                        row.forEach((h, idx) => { if(h && String(h).trim() !== "") columnMap[String(h).toLowerCase().trim()] = idx; });
+                        continue;
+                    }
+                    if (firstCol.toLowerCase().includes("total geral")) continue;
+                    let nomeLinha = firstCol === "" ? "Não Informado" : firstCol;
+                    if (nomeLinha !== "NaN" && nomeLinha !== "0") {
+                        let val = getSeguro(row, monthFilter);
+                        if(val > 0) status[nomeLinha] = val;
+                    }
+                }
+                else if (currentSection.includes("Status/ Vendedor")) {
+                    if (row[1] && String(row[1]).includes("Vendedor")) {
+                         row.forEach((h, idx) => {
+                             if(h) {
+                                 let text = String(h).trim();
+                                 if(text === "Em negociação") headerMap.neg = idx;
+                                 if(text === "Ganho") headerMap.ganho = idx;
+                                 if(text === "Perdido") headerMap.perd = idx;
+                             }
+                         });
+                         continue; 
+                    }
+
+                    if (firstCol && firstCol !== "Mês" && !firstCol.toLowerCase().includes("total") && !firstCol.includes("Distribuição")) {
+                        columnMap['mesTabela'] = firstCol.split('/')[0].toLowerCase();
+                    }
+                    
+                    if ((columnMap['mesTabela'] === monthFilter || monthFilter === "total geral") && row[1]) {
+                        if (String(row[1]).includes("[ADM]") || String(row[1]).includes("[MBH]")) {
+                            let nome = String(row[1]).replace("[MBH]", "").replace("[ADM]", "").trim();
+                            
+                            let neg = parseInt(row[headerMap.neg]) || 0;
+                            let ganho = parseInt(row[headerMap.ganho]) || 0;
+                            let perd = parseInt(row[headerMap.perd]) || 0;
+                            
+                            if (!vendedorStats[nome]) {
+                                vendedorStats[nome] = { negociacao: 0, ganho: 0, perdido: 0 };
+                            }
+                            vendedorStats[nome].negociacao += neg;
+                            vendedorStats[nome].ganho += ganho;
+                            vendedorStats[nome].perdido += perd;
+                        }
+                    }
+                }
+            }
+            return { midia, evento, produto, insucesso, status, vendedorStats, kpiTotalAtracao };
+        }
+
+        function extractTop(obj, limit=10) {
+            const arr = Object.keys(obj).map(k => [k, obj[k]]);
+            arr.sort((a, b) => b[1] - a[1]);
+            return arr.slice(0, limit).reduce((acc, el) => { acc[el[0]] = el[1]; return acc; }, {});
+        }
+
+        function updateDashboardData() {
+            if (parsedData.length === 0) return;
+            const monthFilter = document.getElementById('month-filter').value;
+            const payload = processarDados(parsedData, monthFilter);
+            
+            if(Object.keys(payload.midia).length === 0 && Object.keys(payload.vendedorStats).length === 0) {
+                console.warn("Filtro sem dados retornados.");
+                return;
+            }
+
+            renderizarVisual(payload); 
+        }
+
+        function renderizarVisual(data) {
+            
+            document.getElementById('kpi-marketing').innerText = data.kpiTotalAtracao.toLocaleString('pt-BR');
+            
+            let sdrStats = data.vendedorStats['ANA'] || {negociacao:0, ganho:0, perdido:0};
+            let totalAna = sdrStats.negociacao + sdrStats.ganho + sdrStats.perdido;
+            document.getElementById('kpi-sdr').innerText = totalAna.toLocaleString('pt-BR');
+            
+            let totalClosersGanhos = 0;
+            Object.entries(data.vendedorStats).forEach(([nome, stats]) => {
+                if (nome !== 'ANA') totalClosersGanhos += stats.ganho;
+            });
+            document.getElementById('kpi-closers').innerText = totalClosersGanhos.toLocaleString('pt-BR');
+            
+            const status = document.getElementById('loading-status');
+            status.innerText = "Sincronizado (Ao Vivo)";
+            status.className = "text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold mr-4";
+
+            Object.keys(charts).forEach(key => { if(charts[key]) charts[key].destroy(); });
+            const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+
+            charts.midia = new Chart(document.getElementById('chartMidia'), {
+                type: 'doughnut',
+                data: { 
+                    labels: Object.keys(data.midia), 
+                    datasets: [{ data: Object.values(data.midia), backgroundColor: ['#1A4BED', '#4B5563', '#9CA3AF', '#E5E7EB', '#D1D5DB'], borderWidth: 2, borderColor: '#FAF9F4' }]
+                },
+                options: { ...commonOptions, cutout: '70%', plugins: { datalabels: { display: false }, legend: { display: true, position: 'right' } } }
+            });
+
+            charts.evento = new Chart(document.getElementById('chartEvento'), {
+                type: 'bar',
+                data: { labels: Object.keys(data.evento), datasets: [{ data: Object.values(data.evento), backgroundColor: '#1A4BED', borderRadius: 4 }] },
+                options: { ...commonOptions, indexAxis: 'y', layout: { padding: { right: 40 } }, scales: { x: { display: false }, y: { grid: { display: false } } }, plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#111827', font: { weight: 'bold'} } } }
+            });
+
+            const topProdutos = extractTop(data.produto, 10);
+            charts.produto = new Chart(document.getElementById('chartProduto'), {
+                type: 'bar',
+                data: { labels: Object.keys(topProdutos), datasets: [{ data: Object.values(topProdutos), backgroundColor: '#4B5563', borderRadius: 4 }] },
+                options: { ...commonOptions, layout: { padding: { top: 30 } }, scales: { x: { grid: { display: false }, ticks: {maxRotation: 45, minRotation: 45} }, y: { display: false } }, plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'top', color: '#111827', font: { weight: 'bold'} } } }
+            });
+
+            charts.status = new Chart(document.getElementById('chartStatus'), {
+                type: 'bar',
+                data: { 
+                    labels: ['Em Negociação', 'Ganhos', 'Perdidos', 'Não Informado'], 
+                    datasets: [{ data: [data.status['Em negociação'] || 0, data.status['Ganho'] || 0, data.status['Perdido'] || 0, data.status['Não Informado'] || 0], backgroundColor: ['#4B5563', '#1A4BED', '#D1D5DB', '#E5E7EB'], borderRadius: 4 }] 
+                },
+                options: { ...commonOptions, indexAxis: 'y', layout: { padding: { right: 40 } }, scales: { x: { display: false }, y: { grid: { display: false } } }, plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#111827', font: { weight: 'bold'} } } }
+            });
+
+            const vendedoresLabels = Object.keys(data.vendedorStats).filter(v => v !== 'ANA');
+            charts.vendedor = new Chart(document.getElementById('chartVendedor'), {
+                type: 'bar',
+                data: { 
+                    labels: vendedoresLabels, 
+                    datasets: [
+                        { label: 'Em Andamento', data: vendedoresLabels.map(v => data.vendedorStats[v].negociacao), backgroundColor: '#7DD3FC', borderRadius: 2 },
+                        { label: 'Insucesso', data: vendedoresLabels.map(v => data.vendedorStats[v].perdido), backgroundColor: '#4B5563', borderRadius: 2 },
+                        { label: 'Sucesso', data: vendedoresLabels.map(v => data.vendedorStats[v].ganho), backgroundColor: '#86EFAC', borderRadius: 2 }
+                    ] 
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false,
+                    layout: { padding: { top: 30 } },
+                    plugins: { 
+                        legend: { display: true, position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } }, 
+                        datalabels: { 
+                            display: true, 
+                            anchor: 'end', 
+                            align: 'top', 
+                            color: '#111827', 
+                            rotation: -90, 
+                            font: { weight: 'bold', size: 10 },
+                            formatter: function(value) { return value > 0 ? value : ''; } 
+                        } 
+                    },
+                    scales: { 
+                        x: { grid: { display: false }, ticks: {maxRotation: 45, minRotation: 45, font: {size: 10}} }, 
+                        y: { display: false, beginAtZero: true } 
+                    }
+                }
+            });
+
+            const topInsucesso = extractTop(data.insucesso, 10);
+            charts.insucesso = new Chart(document.getElementById('chartInsucesso'), {
+                type: 'bar',
+                data: { labels: Object.keys(topInsucesso), datasets: [{ data: Object.values(topInsucesso), backgroundColor: '#D1D5DB', borderRadius: 4 }] },
+                options: { ...commonOptions, indexAxis: 'y', layout: { padding: { right: 40 } }, scales: { x: { display: false }, y: { grid: { display: false } } }, plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#6B7280', font: { weight: 'bold'} } } }
+            });
+        }
+
+        window.onload = fetchSheetData;
+    </script>
+</body>
+</html>
